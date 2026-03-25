@@ -11,13 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { FormFieldInput } from "@/components/FormFieldInput";
 import { LineItemsManager, type LineItem } from "@/components/LineItemsManager";
-// import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import type { ApprovalFormField } from "@/lib/constants";
 
 type ChainStep = { order: number; roleName: string; action: string };
@@ -27,6 +26,7 @@ type ApprovalTypeRow = {
   name: string;
   description: string | null;
   fields: ApprovalFormField[];
+  page_layout?: string;
 };
 
 type ChainRow = {
@@ -145,6 +145,16 @@ export default function NewRequest() {
           return;
         }
       }
+    }
+
+    // Validate required comments
+    if (!preComments || preComments.trim() === "") {
+      toast.error("Pre-salutation is required");
+      return;
+    }
+    if (!postComments || postComments.trim() === "") {
+      toast.error("Closing remarks are required");
+      return;
     }
 
     setSubmitting(true);
@@ -287,19 +297,18 @@ export default function NewRequest() {
                   </div>
                 )}
 
-                {/* Pre-Comments (Optional Salutation) */}
+                {/* Pre-Comments (Salutation) */}
                 <div className="space-y-2 border-t pt-4">
                   <label className="block text-sm font-medium text-foreground">
-                    Pre-Salutation (Optional)
+                    Pre-Salutation <span className="text-destructive">*</span>
                   </label>
-                  <Textarea
-                    value={preComments}
-                    onChange={(e) => setPreComments(e.target.value)}
+                  <RichTextEditor
+                    content={preComments}
+                    onChange={setPreComments}
                     placeholder="e.g., Dear Mr. Manager, I hope you are doing well. Please find below the details of my request..."
-                    rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional: Add a greeting or salutation before the form data
+                    Add a greeting or salutation before the form data
                   </p>
                 </div>
 
@@ -324,7 +333,7 @@ export default function NewRequest() {
               repeatableFields={repeatableFields}
             />
 
-            {/* Post-Comments (Closing Comments) */}
+            {/* Post-Comments (Closing Remarks) */}
             {(regularFields.length > 0 || repeatableFields.length > 0) && (
               <Card className="border">
                 <CardHeader className="pb-3">
@@ -333,16 +342,15 @@ export default function NewRequest() {
                 <CardContent>
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-foreground">
-                      Post-Comments (Optional)
+                      Post-Comments <span className="text-destructive">*</span>
                     </label>
-                    <Textarea
-                      value={postComments}
-                      onChange={(e) => setPostComments(e.target.value)}
+                    <RichTextEditor
+                      content={postComments}
+                      onChange={setPostComments}
                       placeholder="e.g., Thank you for your time and consideration. Please contact me if you need any additional information."
-                      rows={3}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Optional: Add any closing comments before your signature
+                      Add any closing remarks after your form data
                     </p>
                   </div>
                 </CardContent>

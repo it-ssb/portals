@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS approval_types (
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
   fields JSONB NOT NULL DEFAULT '[]',
+  page_layout VARCHAR(20) DEFAULT 'portrait',
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

@@ -152,14 +152,24 @@ export const api = {
 
   approvalTypes: {
     list: () => request<unknown[]>("/api/approval-types"),
-    create: (body: { name: string; description?: string; fields: unknown[] }) =>
+    create: (body: {
+      name: string;
+      description?: string;
+      fields: unknown[];
+      page_layout?: string;
+    }) =>
       request("/api/approval-types", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     update: (
       id: string,
-      body: { name?: string; description?: string; fields?: unknown[] },
+      body: {
+        name?: string;
+        description?: string;
+        fields?: unknown[];
+        page_layout?: string;
+      },
     ) =>
       request(`/api/approval-types/${id}`, {
         method: "PATCH",

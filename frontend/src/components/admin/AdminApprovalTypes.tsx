@@ -40,6 +40,7 @@ interface ApprovalType {
   name: string;
   description: string;
   fields: Field[];
+  page_layout?: string;
 }
 
 export function AdminApprovalTypes() {
@@ -52,6 +53,7 @@ export function AdminApprovalTypes() {
   const [pageLayout, setPageLayout] = useState<PageLayout>("portrait");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("fields");
+  const [draggedFieldIdx, setDraggedFieldIdx] = useState<number | null>(null);
 
   const fetchTypes = async () => {
     try {
@@ -81,7 +83,7 @@ export function AdminApprovalTypes() {
     setName(t.name);
     setDescription(t.description);
     setFields(t.fields);
-    setPageLayout("portrait");
+    setPageLayout((t.page_layout as PageLayout) || "portrait");
     setActiveTab("fields");
     setDialogOpen(true);
   };
@@ -96,6 +98,27 @@ export function AdminApprovalTypes() {
   const removeField = (idx: number) =>
     setFields(fields.filter((_, i) => i !== idx));
 
+  const handleDragStartField = (idx: number) => {
+    setDraggedFieldIdx(idx);
+  };
+
+  const handleDragOverField = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDropField = (targetIdx: number) => {
+    if (draggedFieldIdx === null || draggedFieldIdx === targetIdx) {
+      setDraggedFieldIdx(null);
+      return;
+    }
+    const newFields = [...fields];
+    const [draggedItem] = newFields.splice(draggedFieldIdx, 1);
+    newFields.splice(targetIdx, 0, draggedItem);
+    setFields(newFields);
+    setDraggedFieldIdx(null);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) return;
     const cleanFields = fields.map((f) => ({
@@ -108,6 +131,7 @@ export function AdminApprovalTypes() {
           name,
           description,
           fields: cleanFields,
+          page_layout: pageLayout,
         });
         toast.success("Updated");
       } else {
@@ -115,6 +139,7 @@ export function AdminApprovalTypes() {
           name,
           description,
           fields: cleanFields,
+          page_layout: pageLayout,
         });
         toast.success("Created");
       }
@@ -212,7 +237,13 @@ export function AdminApprovalTypes() {
                   {fields.map((field, idx) => (
                     <div
                       key={idx}
-                      className="flex items-start gap-2 p-3 border rounded bg-muted/30"
+                      draggable
+                      onDragStart={() => handleDragStartField(idx)}
+                      onDragOver={handleDragOverField}
+                      onDrop={() => handleDropField(idx)}
+                      className={`flex items-start gap-2 p-3 border rounded bg-muted/30 cursor-move transition-opacity ${
+                        draggedFieldIdx === idx ? "opacity-50" : ""
+                      }`}
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground mt-2 flex-shrink-0" />
                       <div className="flex-1 grid grid-cols-2 gap-2">

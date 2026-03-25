@@ -69,6 +69,7 @@ type RequestRow = {
     name: string;
     description: string | null;
     fields: unknown;
+    page_layout?: string;
   } | null;
   departments: { name: string } | null;
 };
@@ -407,10 +408,24 @@ export default function RequestDetail() {
 
           {/* Shared letter content used for both print and preview */}
           {(() => {
+            const pageLayout =
+              request.approval_types?.page_layout || "portrait";
+            const pageWidth = pageLayout === "portrait" ? "8.5in" : "11in";
+            const pageHeight = pageLayout === "portrait" ? "11in" : "8.5in";
+            const pageOrientation =
+              pageLayout === "portrait" ? "portrait" : "landscape";
+
             const letterContent = (
               <div
-                className="relative"
-                style={{ fontFamily: "Arial, sans-serif", fontSize: "16px" }}
+                className="relative w-full"
+                style={{
+                  fontFamily: "Arial, sans-serif",
+                  fontSize: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: "100%",
+                  width: "100%",
+                }}
               >
                 {/* Watermark */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] rotate-[-35deg]">
@@ -424,7 +439,7 @@ export default function RequestDetail() {
                     {user?.email}
                   </span>
                 </div>
-                <div className="relative z-10">
+                <div className="relative z-10 flex-1 flex flex-col">
                   <div className="text-center border-b-2 border-foreground pb-3">
                     {settings?.logo_url && (
                       <img
@@ -476,15 +491,13 @@ export default function RequestDetail() {
                   ) : (
                     <div className="mt-6 space-y-3">
                       {preComments && (
-                        <p
+                        <div
                           style={{
                             fontSize: "14px",
-                            whiteSpace: "pre-wrap",
                             fontFamily: "Arial, sans-serif",
                           }}
-                        >
-                          {preComments}
-                        </p>
+                          dangerouslySetInnerHTML={{ __html: preComments }}
+                        />
                       )}
                       <div className="pl-3 border-l-2 border-muted space-y-1">
                         {formEntries.map(([key, value]) => {
@@ -497,63 +510,54 @@ export default function RequestDetail() {
                           );
                         })}
                       </div>
+                      {items.length > 0 && repeatableFields.length > 0 && (
+                        <div className="my-4">
+                          <table
+                            className="w-full border-collapse"
+                            style={{ fontSize: "14px" }}
+                          >
+                            <thead>
+                              <tr>
+                                {repeatableFields.map((field) => (
+                                  <th
+                                    key={field.name}
+                                    className={`border border-foreground p-2 font-semibold bg-muted ${field.type === "number" ? "text-right" : "text-left"}`}
+                                  >
+                                    {field.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map((item: any, idx: number) => (
+                                <tr key={idx}>
+                                  {repeatableFields.map((field) => (
+                                    <td
+                                      key={`${idx}-${field.name}`}
+                                      className={`border border-foreground p-2 ${field.type === "number" ? "text-right" : "text-left"}`}
+                                    >
+                                      {item[field.name] ?? "—"}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                       {postComments && (
-                        <p
+                        <div
                           style={{
                             fontSize: "14px",
-                            whiteSpace: "pre-wrap",
                             fontFamily: "Arial, sans-serif",
+                            marginTop: "1rem",
                           }}
-                        >
-                          {postComments}
-                        </p>
+                          dangerouslySetInnerHTML={{ __html: postComments }}
+                        />
                       )}
                     </div>
                   )}
-                  {items.length > 0 && repeatableFields.length > 0 && (
-                    <div className="my-4">
-                      <table
-                        className="w-full border-collapse"
-                        style={{ fontSize: "14px" }}
-                      >
-                        <thead>
-                          <tr>
-                            {repeatableFields.map((field) => (
-                              <th
-                                key={field.name}
-                                className={`border border-foreground p-2 font-semibold bg-muted ${field.type === "number" ? "text-right" : "text-left"}`}
-                              >
-                                {field.label}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((item: any, idx: number) => (
-                            <tr key={idx}>
-                              {repeatableFields.map((field) => (
-                                <td
-                                  key={`${idx}-${field.name}`}
-                                  className={`border border-foreground p-2 ${field.type === "number" ? "text-right" : "text-left"}`}
-                                >
-                                  {item[field.name] ?? "—"}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  <p
-                    className="leading-relaxed"
-                    style={{ fontSize: "14px", marginTop: "1.5rem" }}
-                  >
-                    I kindly request your prompt review and approval of this
-                    request.
-                  </p>
                   <div className="mt-6">
-                    <p style={{ fontSize: "14px" }}>Respectfully submitted,</p>
                     <p className="font-bold mt-6" style={{ fontSize: "14px" }}>
                       {initiatorName}
                     </p>
@@ -586,11 +590,28 @@ export default function RequestDetail() {
               <>
                 {/* Print version (hidden on screen) */}
                 <Card
-                  className="border-0 shadow-none print-only"
+                  className={`border-0 shadow-none print-only ${
+                    pageOrientation === "landscape"
+                      ? "print-landscape"
+                      : "print-portrait"
+                  }`}
                   id="print-letter"
-                  style={{ display: "none" }}
+                  style={{
+                    display: "none",
+                  }}
                 >
-                  <CardContent className="p-8">{letterContent}</CardContent>
+                  <CardContent
+                    className="p-8"
+                    style={{
+                      width: pageWidth,
+                      height: pageHeight,
+                      margin: "0 auto",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    {letterContent}
+                  </CardContent>
                 </Card>
 
                 {/* On-screen preview */}
@@ -599,7 +620,16 @@ export default function RequestDetail() {
                     <CardTitle className="text-base">Letter Preview</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="bg-card border rounded p-6 max-w-2xl mx-auto shadow-sm">
+                    <div
+                      className="bg-card border rounded mx-auto shadow-sm"
+                      style={{
+                        width: pageWidth,
+                        height: pageHeight,
+                        overflow: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
                       {letterContent}
                     </div>
                   </CardContent>

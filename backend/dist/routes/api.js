@@ -401,12 +401,14 @@ apiRouter.post("/approval-types", requireAuth, asyncHandler(async (req, res) => 
         name: z.string().min(1),
         description: z.string().optional(),
         fields: z.array(z.any()),
+        page_layout: z.enum(["portrait", "landscape"]).optional(),
     })
         .parse(req.body);
-    const { rows } = await pool.query(`INSERT INTO approval_types (name, description, fields, created_by) VALUES ($1, $2, $3::jsonb, $4) RETURNING *`, [
+    const { rows } = await pool.query(`INSERT INTO approval_types (name, description, fields, page_layout, created_by) VALUES ($1, $2, $3::jsonb, $4, $5) RETURNING *`, [
         body.name.trim(),
         body.description ?? "",
         JSON.stringify(body.fields),
+        body.page_layout ?? "portrait",
         req.auth.userId,
     ]);
     // Log audit event
@@ -426,6 +428,7 @@ apiRouter.patch("/approval-types/:id", requireAuth, asyncHandler(async (req, res
         name: z.string().min(1).optional(),
         description: z.string().optional(),
         fields: z.array(z.any()).optional(),
+        page_layout: z.enum(["portrait", "landscape"]).optional(),
     })
         .parse(req.body);
     const parts = [];
@@ -443,6 +446,10 @@ apiRouter.patch("/approval-types/:id", requireAuth, asyncHandler(async (req, res
         parts.push(`fields = $${n++}::jsonb`);
         vals.push(JSON.stringify(body.fields));
     }
+    if (body.page_layout !== undefined) {
+        parts.push(`page_layout = $${n++}`);
+        vals.push(body.page_layout);
+    }
     if (parts.length === 0)
         throw new HttpError(400, "No fields to update");
     parts.push(`updated_at = now()`);
@@ -458,6 +465,8 @@ apiRouter.patch("/approval-types/:id", requireAuth, asyncHandler(async (req, res
         changes.push(`description: "${body.description}"`);
     if (body.fields !== undefined)
         changes.push(`fields updated`);
+    if (body.page_layout !== undefined)
+        changes.push(`page_layout: "${body.page_layout}"`);
     await logAudit(req.auth.userId, req.profile.full_name, "UPDATE", "Approval Type", `Updated approval type ${rows[0].name}: ${changes.join(", ")}`);
     res.json(rows[0]);
 }));

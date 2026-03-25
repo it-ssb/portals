@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -64,21 +64,47 @@
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: 'Inter', sans-serif;
+    font-family: "Inter", sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', sans-serif;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Inter", sans-serif;
   }
 }
 
 @layer utilities {
   .font-document {
-    font-family: 'Libre Baskerville', serif;
+    font-family: "Libre Baskerville", serif;
   }
 
   .transition-snappy {
     transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* Letter preview layout for screen display */
+@layer utilities {
+  /* Ensure letter content expands properly in preview */
+  [style*="width: 8.5in"],
+  [style*="width: 11in"] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Table styling for letter preview */
+  #root table {
+    width: 100%;
+    table-layout: auto;
+  }
+
+  #root table td,
+  #root table th {
+    word-break: break-word;
   }
 }
 
@@ -106,6 +132,36 @@
 
   #print-letter > div {
     padding: 40px !important;
+    margin: 0 !important;
+  }
+
+  #print-letter.print-landscape > div {
+    width: 11in !important;
+    height: 8.5in !important;
+  }
+
+  #print-letter.print-portrait > div {
+    width: 8.5in !important;
+    height: 11in !important;
+  }
+
+  /* Ensure tables and content fill available width */
+  #print-letter table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  #print-letter table td,
+  #print-letter table th {
+    word-break: break-word !important;
+  }
+
+  #print-letter .prose {
+    max-width: 100% !important;
+  }
+
+  #print-letter div {
+    width: 100% !important;
   }
 
   .no-print {
@@ -117,8 +173,9 @@
     visibility: visible !important;
   }
 
+  /* Set page size based on orientation */
   @page {
     margin: 0.5in;
-    size: A4;
+    size: 8.5in 11in;
   }
 }
