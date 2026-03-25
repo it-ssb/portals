@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Approvals from "./pages/Approvals";
 import RequestDetail from "./pages/RequestDetail";
 import NewRequest from "./pages/NewRequest";
+import Profile from "./pages/Profile";
 import AdminConsole from "./pages/AdminConsole";
 import AuditLogs from "./pages/AuditLogs";
 import Login from "./pages/Login";
@@ -38,6 +39,7 @@ function ProtectedRoutes() {
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/approvals/new" element={<NewRequest />} />
         <Route path="/approvals/:id" element={<RequestDetail />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminConsole />} />
         <Route path="/audit-logs" element={<AuditLogs />} />
         <Route path="*" element={<NotFound />} />

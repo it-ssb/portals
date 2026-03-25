@@ -1,5 +1,17 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api, type AuthUser, type Profile, getStoredToken, setStoredToken } from "@/lib/api";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
+import {
+  api,
+  type AuthUser,
+  type Profile,
+  getStoredToken,
+  setStoredToken,
+} from "@/lib/api";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -8,6 +20,8 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
+  hasPermission: (permission: string) => boolean;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,7 +58,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { token, user: u, profile: p } = await api.auth.login({ email, password });
+      const {
+        token,
+        user: u,
+        profile: p,
+      } = await api.auth.login({ email, password });
       setStoredToken(token);
       setUser(u);
       setProfile(p);
@@ -60,6 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   };
 
+  const hasPermission = (permission: string): boolean => {
+    if (profile?.is_admin) return true;
+    return profile?.permissions?.includes(permission) ?? false;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -69,6 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         isAdmin: profile?.is_admin ?? false,
+        hasPermission,
+        refreshSession,
       }}
     >
       {children}

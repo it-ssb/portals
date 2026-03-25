@@ -5,12 +5,22 @@ import { HttpError } from "../httpError.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { signToken } from "../auth/jwt.js";
-import { requireAuth, requireAdmin, type AuthedRequest } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireAdmin,
+  type AuthedRequest,
+} from "../middleware/auth.js";
 
 export const apiRouter = Router();
 
 // Helper function to log audit events
-async function logAudit(userId: string, userName: string, action: string, target: string, details?: string | null) {
+async function logAudit(
+  userId: string,
+  userName: string,
+  action: string,
+  target: string,
+  details?: string | null,
+) {
   try {
     await pool.query(
       `INSERT INTO audit_logs (user_id, user_name, action, target, details) VALUES ($1, $2, $3, $4, $5)`,
@@ -27,7 +37,9 @@ async function logAudit(userId: string, userName: string, action: string, target
 apiRouter.get(
   "/setup/status",
   asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT COUNT(*)::int AS c FROM profiles`);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM profiles`,
+    );
     res.json({ hasUsers: rows[0].c > 0 });
   }),
 );
@@ -41,7 +53,9 @@ const setupBody = z.object({
 apiRouter.post(
   "/setup",
   asyncHandler(async (req, res) => {
-    const { rows: cnt } = await pool.query(`SELECT COUNT(*)::int AS c FROM profiles`);
+    const { rows: cnt } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM profiles`,
+    );
     if (cnt[0].c > 0) {
       throw new HttpError(400, "Setup already completed");
     }
@@ -62,7 +76,11 @@ apiRouter.post(
       await client.query("COMMIT");
       const token = signToken({ sub: id, email: body.email.toLowerCase() });
       const profile = await loadProfileById(id);
-      res.status(201).json({ token, user: { id, email: body.email.toLowerCase() }, profile });
+      res.status(201).json({
+        token,
+        user: { id, email: body.email.toLowerCase() },
+        profile,
+      });
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -81,10 +99,13 @@ apiRouter.post(
   "/auth/login",
   asyncHandler(async (req, res) => {
     const body = loginBody.parse(req.body);
-    const { rows } = await pool.query<{ id: string; password_hash: string; email: string }>(
-      `SELECT id, password_hash, email FROM users WHERE email = $1`,
-      [body.email.toLowerCase()],
-    );
+    const { rows } = await pool.query<{
+      id: string;
+      password_hash: string;
+      email: string;
+    }>(`SELECT id, password_hash, email FROM users WHERE email = $1`, [
+      body.email.toLowerCase(),
+    ]);
     if (rows.length === 0) {
       throw new HttpError(401, "Invalid email or password");
     }
@@ -123,7 +144,10 @@ apiRouter.get(
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
     const id = req.auth!.userId;
-    const { rows: u } = await pool.query<{ email: string }>(`SELECT email FROM users WHERE id = $1`, [id]);
+    const { rows: u } = await pool.query<{ email: string }>(
+      `SELECT email FROM users WHERE id = $1`,
+      [id],
+    );
     const profile = await loadProfileById(id);
     res.json({ user: { id, email: u[0]?.email }, profile });
   }),
@@ -151,8 +175,33 @@ apiRouter.patch(
       if (!ok) throw new HttpError(400, "Current password is incorrect");
     }
     const newHash = await hashPassword(body.new_password);
-    await pool.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [newHash, userId]);
+    await pool.query(
+      `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+      [newHash, userId],
+    );
     res.json({ success: true });
+  }),
+);
+
+const profileUpdateBody = z.object({
+  full_name: z.string().min(1),
+});
+
+apiRouter.patch(
+  "/auth/me/profile",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const body = profileUpdateBody.parse(req.body);
+    const userId = req.auth!.userId;
+
+    await pool.query(
+      `UPDATE profiles SET full_name = $1, updated_at = now() WHERE id = $2`,
+      [body.full_name.trim(), userId],
+    );
+
+    // Return updated profile
+    const profile = await loadProfileById(userId);
+    res.json({ profile });
   }),
 );
 
@@ -166,8 +215,25 @@ apiRouter.patch(
         logo_url: z.string().nullable().optional(),
       })
       .parse(req.body);
-    const { rows } = await pool.query<{ id: string }>(`SELECT id FROM company_settings LIMIT 1`);
-    if (rows.length === 0) throw new HttpError(404, "Settings not found");
+
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM company_settings LIMIT 1`,
+    );
+
+    if (rows.length === 0) {
+      // Initialize company settings if they do not exist yet
+      const { rows: inserted } = await pool.query(
+        `INSERT INTO company_settings (company_name, logo_url, updated_by) VALUES ($1, $2, $3) RETURNING *`,
+        [
+          body.company_name ?? "ApprovalHub",
+          body.logo_url ?? null,
+          req.auth!.userId,
+        ],
+      );
+      res.json(inserted[0]);
+      return;
+    }
+
     const id = rows[0].id;
     const parts: string[] = [];
     const vals: unknown[] = [];
@@ -187,8 +253,14 @@ apiRouter.patch(
     parts.push(`updated_by = $${n++}`);
     vals.push(req.auth!.userId);
     vals.push(id);
-    await pool.query(`UPDATE company_settings SET ${parts.join(", ")} WHERE id = $${n}`, vals);
-    const { rows: out } = await pool.query(`SELECT * FROM company_settings WHERE id = $1`, [id]);
+    await pool.query(
+      `UPDATE company_settings SET ${parts.join(", ")} WHERE id = $${n}`,
+      vals,
+    );
+    const { rows: out } = await pool.query(
+      `SELECT * FROM company_settings WHERE id = $1`,
+      [id],
+    );
     res.json(out[0]);
   }),
 );
@@ -197,22 +269,50 @@ apiRouter.patch(
 apiRouter.get(
   "/departments",
   requireAuth,
-  asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT * FROM departments ORDER BY name`);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_departments/manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_departments") ||
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM departments ORDER BY name`,
+    );
     res.json(rows);
   }),
 );
 
 apiRouter.post(
   "/departments",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const body = z.object({ name: z.string().min(1), head_name: z.string().nullable().optional() }).parse(req.body);
+    // Check if user has admin access or manage_departments permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_departments") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    const body = z
+      .object({
+        name: z.string().min(1),
+        head_name: z.string().nullable().optional(),
+      })
+      .parse(req.body);
     const { rows } = await pool.query(
       `INSERT INTO departments (name, head_name) VALUES ($1, $2) RETURNING *`,
       [body.name.trim(), body.head_name ?? null],
     );
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -221,16 +321,30 @@ apiRouter.post(
       "Department",
       `Created department: ${body.name}`,
     );
-    
+
     res.status(201).json(rows[0]);
   }),
 );
 
 apiRouter.patch(
   "/departments/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const body = z.object({ name: z.string().min(1).optional(), head_name: z.string().nullable().optional() }).parse(req.body);
+    // Check if user has admin access or manage_departments permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_departments") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        head_name: z.string().nullable().optional(),
+      })
+      .parse(req.body);
     const parts: string[] = [];
     const vals: unknown[] = [];
     let n = 1;
@@ -250,12 +364,13 @@ apiRouter.patch(
       vals,
     );
     if (rows.length === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     const changes: string[] = [];
     if (body.name !== undefined) changes.push(`name: "${body.name}"`);
-    if (body.head_name !== undefined) changes.push(`head_name: "${body.head_name}"`);
-    
+    if (body.head_name !== undefined)
+      changes.push(`head_name: "${body.head_name}"`);
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -263,25 +378,37 @@ apiRouter.patch(
       "Department",
       `Updated department ${rows[0].name}: ${changes.join(", ")}`,
     );
-    
+
     res.json(rows[0]);
   }),
 );
 
 apiRouter.delete(
   "/departments/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_departments permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_departments") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     // Get department name for audit logging
     const { rows: dept } = await pool.query(
       `SELECT name FROM departments WHERE id = $1`,
       [req.params.id],
     );
     const deptName = dept[0]?.name || "Unknown";
-    
-    const r = await pool.query(`DELETE FROM departments WHERE id = $1`, [req.params.id]);
+
+    const r = await pool.query(`DELETE FROM departments WHERE id = $1`, [
+      req.params.id,
+    ]);
     if (r.rowCount === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -290,7 +417,7 @@ apiRouter.delete(
       "Department",
       `Deleted department: ${deptName}`,
     );
-    
+
     res.status(204).end();
   }),
 );
@@ -299,7 +426,18 @@ apiRouter.delete(
 apiRouter.get(
   "/roles",
   requireAuth,
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_roles/manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_roles") ||
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const { rows } = await pool.query(`SELECT * FROM roles ORDER BY name`);
     res.json(rows);
   }),
@@ -307,8 +445,18 @@ apiRouter.get(
 
 apiRouter.post(
   "/roles",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_roles permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_roles") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1),
@@ -320,7 +468,7 @@ apiRouter.post(
       `INSERT INTO roles (name, description, permissions) VALUES ($1, $2, $3) RETURNING *`,
       [body.name.trim(), body.description ?? "", body.permissions],
     );
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -329,15 +477,25 @@ apiRouter.post(
       "Role",
       `Created role: ${body.name}`,
     );
-    
+
     res.status(201).json(rows[0]);
   }),
 );
 
 apiRouter.patch(
   "/roles/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_roles permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_roles") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1).optional(),
@@ -363,15 +521,19 @@ apiRouter.patch(
     if (parts.length === 0) throw new HttpError(400, "No fields to update");
     parts.push(`updated_at = now()`);
     vals.push(req.params.id);
-    const { rows } = await pool.query(`UPDATE roles SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`, vals);
+    const { rows } = await pool.query(
+      `UPDATE roles SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`,
+      vals,
+    );
     if (rows.length === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     const changes: string[] = [];
     if (body.name !== undefined) changes.push(`name: "${body.name}"`);
-    if (body.description !== undefined) changes.push(`description: "${body.description}"`);
+    if (body.description !== undefined)
+      changes.push(`description: "${body.description}"`);
     if (body.permissions !== undefined) changes.push(`permissions updated`);
-    
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -379,25 +541,37 @@ apiRouter.patch(
       "Role",
       `Updated role ${rows[0].name}: ${changes.join(", ")}`,
     );
-    
+
     res.json(rows[0]);
   }),
 );
 
 apiRouter.delete(
   "/roles/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_roles permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_roles") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     // Get role name for audit logging
     const { rows: role } = await pool.query(
       `SELECT name FROM roles WHERE id = $1`,
       [req.params.id],
     );
     const roleName = role[0]?.name || "Unknown";
-    
-    const r = await pool.query(`DELETE FROM roles WHERE id = $1`, [req.params.id]);
+
+    const r = await pool.query(`DELETE FROM roles WHERE id = $1`, [
+      req.params.id,
+    ]);
     if (r.rowCount === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -406,7 +580,7 @@ apiRouter.delete(
       "Role",
       `Deleted role: ${roleName}`,
     );
-    
+
     res.status(204).end();
   }),
 );
@@ -415,16 +589,38 @@ apiRouter.delete(
 apiRouter.get(
   "/approval-types",
   requireAuth,
-  asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT * FROM approval_types ORDER BY name`);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_approval_types permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_approval_types") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM approval_types ORDER BY name`,
+    );
     res.json(rows);
   }),
 );
 
 apiRouter.post(
   "/approval-types",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_approval_types permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_approval_types") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1),
@@ -434,9 +630,14 @@ apiRouter.post(
       .parse(req.body);
     const { rows } = await pool.query(
       `INSERT INTO approval_types (name, description, fields, created_by) VALUES ($1, $2, $3::jsonb, $4) RETURNING *`,
-      [body.name.trim(), body.description ?? "", JSON.stringify(body.fields), req.auth!.userId],
+      [
+        body.name.trim(),
+        body.description ?? "",
+        JSON.stringify(body.fields),
+        req.auth!.userId,
+      ],
     );
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -445,15 +646,25 @@ apiRouter.post(
       "Approval Type",
       `Created approval type: ${body.name}`,
     );
-    
+
     res.status(201).json(rows[0]);
   }),
 );
 
 apiRouter.patch(
   "/approval-types/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_approval_types permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_approval_types") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1).optional(),
@@ -479,15 +690,19 @@ apiRouter.patch(
     if (parts.length === 0) throw new HttpError(400, "No fields to update");
     parts.push(`updated_at = now()`);
     vals.push(req.params.id);
-    const { rows } = await pool.query(`UPDATE approval_types SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`, vals);
+    const { rows } = await pool.query(
+      `UPDATE approval_types SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`,
+      vals,
+    );
     if (rows.length === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     const changes: string[] = [];
     if (body.name !== undefined) changes.push(`name: "${body.name}"`);
-    if (body.description !== undefined) changes.push(`description: "${body.description}"`);
+    if (body.description !== undefined)
+      changes.push(`description: "${body.description}"`);
     if (body.fields !== undefined) changes.push(`fields updated`);
-    
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -495,25 +710,36 @@ apiRouter.patch(
       "Approval Type",
       `Updated approval type ${rows[0].name}: ${changes.join(", ")}`,
     );
-    
+
     res.json(rows[0]);
   }),
 );
 
 apiRouter.delete(
   "/approval-types/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_approval_types permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_approval_types") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
     // Get approval type name for audit logging
     const { rows: approvalType } = await pool.query(
       `SELECT name FROM approval_types WHERE id = $1`,
       [req.params.id],
     );
     const approvalTypeName = approvalType[0]?.name || "Unknown";
-    
-    const r = await pool.query(`DELETE FROM approval_types WHERE id = $1`, [req.params.id]);
+
+    const r = await pool.query(`DELETE FROM approval_types WHERE id = $1`, [
+      req.params.id,
+    ]);
     if (r.rowCount === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -522,7 +748,7 @@ apiRouter.delete(
       "Approval Type",
       `Deleted approval type: ${approvalTypeName}`,
     );
-    
+
     res.status(204).end();
   }),
 );
@@ -531,16 +757,38 @@ apiRouter.delete(
 apiRouter.get(
   "/approval-chains",
   requireAuth,
-  asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT * FROM approval_chains ORDER BY name`);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_chains permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_chains") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM approval_chains ORDER BY name`,
+    );
     res.json(rows);
   }),
 );
 
 apiRouter.post(
   "/approval-chains",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_chains permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_chains") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1),
@@ -550,9 +798,14 @@ apiRouter.post(
       .parse(req.body);
     const { rows } = await pool.query(
       `INSERT INTO approval_chains (name, approval_type_id, steps, created_by) VALUES ($1, $2, $3::jsonb, $4) RETURNING *`,
-      [body.name.trim(), body.approval_type_id, JSON.stringify(body.steps), req.auth!.userId],
+      [
+        body.name.trim(),
+        body.approval_type_id,
+        JSON.stringify(body.steps),
+        req.auth!.userId,
+      ],
     );
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -561,15 +814,25 @@ apiRouter.post(
       "Approval Chain",
       `Created approval chain: ${body.name}`,
     );
-    
+
     res.status(201).json(rows[0]);
   }),
 );
 
 apiRouter.patch(
   "/approval-chains/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_chains permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_chains") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = z
       .object({
         name: z.string().min(1).optional(),
@@ -595,15 +858,19 @@ apiRouter.patch(
     if (parts.length === 0) throw new HttpError(400, "No fields to update");
     parts.push(`updated_at = now()`);
     vals.push(req.params.id);
-    const { rows } = await pool.query(`UPDATE approval_chains SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`, vals);
+    const { rows } = await pool.query(
+      `UPDATE approval_chains SET ${parts.join(", ")} WHERE id = $${n} RETURNING *`,
+      vals,
+    );
     if (rows.length === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     const changes: string[] = [];
     if (body.name !== undefined) changes.push(`name: "${body.name}"`);
-    if (body.approval_type_id !== undefined) changes.push(`approval_type_id updated`);
+    if (body.approval_type_id !== undefined)
+      changes.push(`approval_type_id updated`);
     if (body.steps !== undefined) changes.push(`steps updated`);
-    
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -611,25 +878,37 @@ apiRouter.patch(
       "Approval Chain",
       `Updated approval chain ${rows[0].name}: ${changes.join(", ")}`,
     );
-    
+
     res.json(rows[0]);
   }),
 );
 
 apiRouter.delete(
   "/approval-chains/:id",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_chains permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_chains") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     // Get approval chain name for audit logging
     const { rows: approvalChain } = await pool.query(
       `SELECT name FROM approval_chains WHERE id = $1`,
       [req.params.id],
     );
     const approvalChainName = approvalChain[0]?.name || "Unknown";
-    
-    const r = await pool.query(`DELETE FROM approval_chains WHERE id = $1`, [req.params.id]);
+
+    const r = await pool.query(`DELETE FROM approval_chains WHERE id = $1`, [
+      req.params.id,
+    ]);
     if (r.rowCount === 0) throw new HttpError(404, "Not found");
-    
+
     // Log audit event
     await logAudit(
       req.auth!.userId,
@@ -638,7 +917,7 @@ apiRouter.delete(
       "Approval Chain",
       `Deleted approval chain: ${approvalChainName}`,
     );
-    
+
     res.status(204).end();
   }),
 );
@@ -669,9 +948,22 @@ apiRouter.get(
 // Profiles (admin list)
 apiRouter.get(
   "/profiles",
-  requireAdmin,
-  asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT * FROM profiles ORDER BY created_at DESC`);
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM profiles WHERE NOT is_admin OR id = $1 ORDER BY created_at DESC`,
+      [req.auth!.userId],
+    );
     res.json(rows);
   }),
 );
@@ -688,8 +980,18 @@ const createUserBody = z.object({
 
 apiRouter.post(
   "/admin/users",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = createUserBody.parse(req.body);
     const password_hash = await hashPassword(body.password);
     const client = await pool.connect();
@@ -714,7 +1016,7 @@ apiRouter.post(
       );
       await client.query("COMMIT");
       const profile = await loadProfileById(id);
-      
+
       // Log audit event
       await logAudit(
         req.auth!.userId,
@@ -723,11 +1025,16 @@ apiRouter.post(
         "User",
         `Created user: ${body.email} (${body.full_name})`,
       );
-      
+
       res.status(201).json({ id, email: body.email.toLowerCase(), profile });
     } catch (e: unknown) {
       await client.query("ROLLBACK");
-      if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "23505") {
+      if (
+        e &&
+        typeof e === "object" &&
+        "code" in e &&
+        (e as { code: string }).code === "23505"
+      ) {
         throw new HttpError(400, "Email already in use");
       }
       throw e;
@@ -743,23 +1050,33 @@ const adminPasswordBody = z.object({
 
 apiRouter.patch(
   "/admin/users/:userId/password",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = adminPasswordBody.parse(req.body);
     const newHash = await hashPassword(body.new_password);
-    const r = await pool.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
-      newHash,
-      req.params.userId,
-    ]);
+    const r = await pool.query(
+      `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+      [newHash, req.params.userId],
+    );
     if (r.rowCount === 0) throw new HttpError(404, "User not found");
-    
+
     // Log audit event
     const { rows: targetUser } = await pool.query(
       `SELECT full_name FROM profiles WHERE id = $1`,
       [req.params.userId],
     );
     const targetName = targetUser[0]?.full_name || "Unknown";
-    
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -767,7 +1084,7 @@ apiRouter.patch(
       "User",
       `Reset password for user: ${targetName}`,
     );
-    
+
     res.json({ success: true });
   }),
 );
@@ -782,8 +1099,18 @@ const updateUserBody = z.object({
 
 apiRouter.patch(
   "/admin/users/:userId",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const body = updateUserBody.parse(req.body);
     const updates: string[] = [];
     const values: unknown[] = [];
@@ -827,16 +1154,19 @@ apiRouter.patch(
     );
 
     if (r.rowCount === 0) throw new HttpError(404, "User not found");
-    
+
     // Log audit event
     const targetUser = r.rows[0];
     const changes: string[] = [];
-    if (body.full_name !== undefined) changes.push(`full_name: "${body.full_name}"`);
-    if (body.department_id !== undefined) changes.push(`department_id: "${body.department_id}"`);
+    if (body.full_name !== undefined)
+      changes.push(`full_name: "${body.full_name}"`);
+    if (body.department_id !== undefined)
+      changes.push(`department_id: "${body.department_id}"`);
     if (body.role_id !== undefined) changes.push(`role_id: "${body.role_id}"`);
     if (body.is_admin !== undefined) changes.push(`is_admin: ${body.is_admin}`);
-    if (body.is_active !== undefined) changes.push(`is_active: ${body.is_active}`);
-    
+    if (body.is_active !== undefined)
+      changes.push(`is_active: ${body.is_active}`);
+
     await logAudit(
       req.auth!.userId,
       req.profile!.full_name,
@@ -844,15 +1174,25 @@ apiRouter.patch(
       "User",
       `Updated user ${targetUser.full_name}: ${changes.join(", ")}`,
     );
-    
+
     res.json({ profile: r.rows[0] });
   }),
 );
 
 apiRouter.delete(
   "/admin/users/:userId",
-  requireAdmin,
+  requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Check if user has admin access or manage_users permission
+    const isAdmin = req.profile?.is_admin;
+    const hasPermission =
+      req.profile?.permissions?.includes("manage_users") ||
+      req.profile?.permissions?.includes("all");
+
+    if (!isAdmin && !hasPermission) {
+      throw new HttpError(403, "Forbidden");
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -862,20 +1202,30 @@ apiRouter.delete(
         [req.params.userId],
       );
       const targetName = targetUser[0]?.full_name || "Unknown";
-      
+
       // Delete approval actions where user acted
-      await client.query(`DELETE FROM approval_actions WHERE acted_by = $1`, [req.params.userId]);
+      await client.query(`DELETE FROM approval_actions WHERE acted_by = $1`, [
+        req.params.userId,
+      ]);
       // Delete approval requests initiated by user
-      await client.query(`DELETE FROM approval_requests WHERE initiator_id = $1`, [req.params.userId]);
+      await client.query(
+        `DELETE FROM approval_requests WHERE initiator_id = $1`,
+        [req.params.userId],
+      );
       // Delete profile
-      const profileRes = await client.query(`DELETE FROM profiles WHERE id = $1 RETURNING id`, [req.params.userId]);
+      const profileRes = await client.query(
+        `DELETE FROM profiles WHERE id = $1 RETURNING id`,
+        [req.params.userId],
+      );
       if (profileRes.rowCount === 0) {
         throw new HttpError(404, "User not found");
       }
       // Delete user account
-      await client.query(`DELETE FROM users WHERE id = $1`, [req.params.userId]);
+      await client.query(`DELETE FROM users WHERE id = $1`, [
+        req.params.userId,
+      ]);
       await client.query("COMMIT");
-      
+
       // Log audit event
       await logAudit(
         req.auth!.userId,
@@ -884,7 +1234,7 @@ apiRouter.delete(
         "User",
         `Deleted user: ${targetName}`,
       );
-      
+
       res.json({ success: true });
     } catch (e) {
       await client.query("ROLLBACK");
@@ -970,13 +1320,21 @@ apiRouter.get(
       `SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`,
       [req.params.id],
     );
-    const actorIds = [...new Set(actions.map((a: { acted_by: string | null }) => a.acted_by).filter(Boolean))] as string[];
+    const actorIds = [
+      ...new Set(
+        actions
+          .map((a: { acted_by: string | null }) => a.acted_by)
+          .filter(Boolean),
+      ),
+    ] as string[];
     const actorNames: Record<string, string> = {};
     if (actorIds.length > 0) {
-      const { rows: actors } = await pool.query<{ id: string; full_name: string }>(
-        `SELECT id, full_name FROM profiles WHERE id = ANY($1::uuid[])`,
-        [actorIds],
-      );
+      const { rows: actors } = await pool.query<{
+        id: string;
+        full_name: string;
+      }>(`SELECT id, full_name FROM profiles WHERE id = ANY($1::uuid[])`, [
+        actorIds,
+      ]);
       for (const a of actors) actorNames[a.id] = a.full_name;
     }
     res.json({ request: rows[0], actions, actorNames });
@@ -1048,7 +1406,7 @@ apiRouter.post(
         body.status,
       ],
     );
-    
+
     // Log audit event
     await logAudit(
       uid,
@@ -1057,7 +1415,7 @@ apiRouter.post(
       "Approval Request",
       `Created approval request: ${rows[0].request_number}`,
     );
-    
+
     res.status(201).json(rows[0]);
   }),
 );
@@ -1094,7 +1452,8 @@ apiRouter.post(
       `SELECT * FROM approval_actions WHERE request_id = $1 AND status = 'pending' ORDER BY step_order LIMIT 1`,
       [requestId],
     );
-    if (pendingActions.length === 0) throw new HttpError(400, "No pending approval step found");
+    if (pendingActions.length === 0)
+      throw new HttpError(400, "No pending approval step found");
     const currentAction = pendingActions[0];
 
     // Check if user's role can approve this step
@@ -1113,7 +1472,10 @@ apiRouter.post(
     }
 
     if (!canApprove) {
-      throw new HttpError(403, `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`);
+      throw new HttpError(
+        403,
+        `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`,
+      );
     }
 
     // Update the current action to approved
@@ -1151,12 +1513,15 @@ apiRouter.post(
     );
 
     // Return updated request
-    const { rows: updatedRequests } = await pool.query(`SELECT * FROM approval_requests WHERE id = $1`, [requestId]);
+    const { rows: updatedRequests } = await pool.query(
+      `SELECT * FROM approval_requests WHERE id = $1`,
+      [requestId],
+    );
     const { rows: updatedActions } = await pool.query(
       `SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`,
       [requestId],
     );
-    
+
     // Log audit event
     await logAudit(
       userId,
@@ -1169,7 +1534,6 @@ apiRouter.post(
     res.json({ request: updatedRequests[0], actions: updatedActions });
   }),
 );
-
 
 // Reject an approval request
 apiRouter.post(
@@ -1199,7 +1563,8 @@ apiRouter.post(
       `SELECT * FROM approval_actions WHERE request_id = $1 AND status = 'pending' ORDER BY step_order LIMIT 1`,
       [requestId],
     );
-    if (pendingActions.length === 0) throw new HttpError(400, "No pending approval step found");
+    if (pendingActions.length === 0)
+      throw new HttpError(400, "No pending approval step found");
     const currentAction = pendingActions[0];
 
     // Check if user's role can reject this step
@@ -1218,7 +1583,10 @@ apiRouter.post(
     }
 
     if (!canReject) {
-      throw new HttpError(403, `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`);
+      throw new HttpError(
+        403,
+        `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`,
+      );
     }
 
     // Update the current action to rejected
@@ -1228,7 +1596,10 @@ apiRouter.post(
     );
 
     // Mark the request as rejected
-    await pool.query(`UPDATE approval_requests SET status = 'rejected', updated_at = now() WHERE id = $1`, [requestId]);
+    await pool.query(
+      `UPDATE approval_requests SET status = 'rejected', updated_at = now() WHERE id = $1`,
+      [requestId],
+    );
 
     // Mark remaining pending actions as skipped
     await pool.query(
@@ -1237,12 +1608,15 @@ apiRouter.post(
     );
 
     // Return updated request
-    const { rows: updatedRequests } = await pool.query(`SELECT * FROM approval_requests WHERE id = $1`, [requestId]);
+    const { rows: updatedRequests } = await pool.query(
+      `SELECT * FROM approval_requests WHERE id = $1`,
+      [requestId],
+    );
     const { rows: updatedActions } = await pool.query(
       `SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`,
       [requestId],
     );
-    
+
     // Log audit event
     await logAudit(
       userId,
@@ -1276,7 +1650,10 @@ apiRouter.post(
 
     // Prevent initiator from requesting changes
     if (request.initiator_id === userId) {
-      throw new HttpError(403, "You cannot request changes on your own request");
+      throw new HttpError(
+        403,
+        "You cannot request changes on your own request",
+      );
     }
 
     // Get the first pending action
@@ -1284,7 +1661,8 @@ apiRouter.post(
       `SELECT * FROM approval_actions WHERE request_id = $1 AND status = 'pending' ORDER BY step_order LIMIT 1`,
       [requestId],
     );
-    if (pendingActions.length === 0) throw new HttpError(400, "No pending approval step found");
+    if (pendingActions.length === 0)
+      throw new HttpError(400, "No pending approval step found");
     const currentAction = pendingActions[0];
 
     // Check if user's role can request changes
@@ -1303,7 +1681,10 @@ apiRouter.post(
     }
 
     if (!canRequestChanges) {
-      throw new HttpError(403, `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`);
+      throw new HttpError(
+        403,
+        `This step requires approval from role: ${currentAction.role_name}. Your role: ${userRoleName || "No role assigned"}`,
+      );
     }
 
     // Update the current action to changes_requested
@@ -1319,12 +1700,15 @@ apiRouter.post(
     );
 
     // Return updated request
-    const { rows: updatedRequests } = await pool.query(`SELECT * FROM approval_requests WHERE id = $1`, [requestId]);
+    const { rows: updatedRequests } = await pool.query(
+      `SELECT * FROM approval_requests WHERE id = $1`,
+      [requestId],
+    );
     const { rows: updatedActions } = await pool.query(
       `SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`,
       [requestId],
     );
-    
+
     // Log audit event
     await logAudit(
       userId,
@@ -1361,12 +1745,18 @@ apiRouter.patch(
 
     // Only initiator can update
     if (request.initiator_id !== userId) {
-      throw new HttpError(403, "Only the request initiator can update the request");
+      throw new HttpError(
+        403,
+        "Only the request initiator can update the request",
+      );
     }
 
     // Request must be in changes_requested state
     if (request.status !== "changes_requested") {
-      throw new HttpError(400, "Request must be in changes_requested state to be updated");
+      throw new HttpError(
+        400,
+        "Request must be in changes_requested state to be updated",
+      );
     }
 
     // Update form_data and reset status to in_progress
@@ -1385,7 +1775,7 @@ apiRouter.patch(
       `SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`,
       [requestId],
     );
-    
+
     // Log audit event
     await logAudit(
       userId,
@@ -1403,15 +1793,25 @@ apiRouter.get(
   "/audit-logs",
   requireAdmin,
   asyncHandler(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT * FROM audit_logs ORDER BY created_at DESC`);
+    const { rows } = await pool.query(
+      `SELECT * FROM audit_logs ORDER BY created_at DESC`,
+    );
     res.json(rows);
   }),
 );
 
 async function loadProfileById(id: string) {
   const { rows } = await pool.query(
-    `SELECT id, full_name, email, department_id, role_id, is_admin, is_active, created_at, updated_at FROM profiles WHERE id = $1`,
+    `SELECT p.id, p.full_name, p.email, p.department_id, p.role_id, p.is_admin, p.is_active, p.created_at, p.updated_at, r.permissions
+     FROM profiles p
+     LEFT JOIN roles r ON p.role_id = r.id
+     WHERE p.id = $1`,
     [id],
   );
-  return rows[0] ?? null;
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    ...row,
+    permissions: row.permissions || [],
+  };
 }

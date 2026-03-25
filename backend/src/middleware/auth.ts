@@ -12,6 +12,7 @@ export interface AuthedRequest extends Request {
     full_name: string;
     email: string;
     role_id: string | null;
+    permissions: string[];
   };
 }
 
@@ -22,14 +23,28 @@ function extractBearer(req: Request): string | null {
 }
 
 async function loadProfile(userId: string) {
-  const { rows } = await pool.query<{ id: string; is_admin: boolean; full_name: string; email: string; role_id: string | null }>(
-    `SELECT id, is_admin, full_name, email, role_id FROM profiles WHERE id = $1`,
+  const { rows } = await pool.query<{
+    id: string;
+    is_admin: boolean;
+    full_name: string;
+    email: string;
+    role_id: string | null;
+    permissions: string[];
+  }>(
+    `SELECT p.id, p.is_admin, p.full_name, p.email, p.role_id, COALESCE(r.permissions, '{}') as permissions
+     FROM profiles p
+     LEFT JOIN roles r ON p.role_id = r.id
+     WHERE p.id = $1`,
     [userId],
   );
   return rows[0] ?? null;
 }
 
-async function requireAuthImpl(req: AuthedRequest, res: Response, next: NextFunction) {
+async function requireAuthImpl(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction,
+) {
   const token = extractBearer(req);
   if (!token) {
     next(new HttpError(401, "Unauthorized"));
@@ -51,7 +66,11 @@ async function requireAuthImpl(req: AuthedRequest, res: Response, next: NextFunc
   }
 }
 
-async function requireAdminImpl(req: AuthedRequest, res: Response, next: NextFunction) {
+async function requireAdminImpl(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction,
+) {
   const token = extractBearer(req);
   if (!token) {
     next(new HttpError(401, "Unauthorized"));

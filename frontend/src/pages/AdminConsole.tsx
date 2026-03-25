@@ -11,15 +11,26 @@ import { Navigate } from "react-router-dom";
 
 export default function AdminConsole() {
   const [activeTab, setActiveTab] = useState("users");
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
 
-  if (!isAdmin) return <Navigate to="/" replace />;
+  const hasAdminAccess =
+    isAdmin ||
+    hasPermission("manage_users") ||
+    hasPermission("manage_roles") ||
+    hasPermission("manage_departments") ||
+    hasPermission("manage_approval_types") ||
+    hasPermission("manage_chains") ||
+    hasPermission("all");
+
+  if (!hasAdminAccess) return <Navigate to="/" replace />;
 
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Admin Console</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage users, roles, departments, approval types, chains, and settings</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage users, roles, departments, approval types, chains, and settings
+        </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -9,7 +9,10 @@ function extractBearer(req) {
     return h.slice(7).trim() || null;
 }
 async function loadProfile(userId) {
-    const { rows } = await pool.query(`SELECT id, is_admin, full_name, email, role_id FROM profiles WHERE id = $1`, [userId]);
+    const { rows } = await pool.query(`SELECT p.id, p.is_admin, p.full_name, p.email, p.role_id, COALESCE(r.permissions, '{}') as permissions
+     FROM profiles p
+     LEFT JOIN roles r ON p.role_id = r.id
+     WHERE p.id = $1`, [userId]);
     return rows[0] ?? null;
 }
 async function requireAuthImpl(req, res, next) {
