@@ -3,8 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,8 +43,12 @@ export default function NewRequest() {
   // const [editorContent, setEditorContent] = useState<string>("");
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [items, setItems] = useState<LineItem[]>([]);
+  const [preComments, setPreComments] = useState<string>("");
+  const [postComments, setPostComments] = useState<string>("");
   const [types, setTypes] = useState<ApprovalTypeRow[]>([]);
-  const [chainsByType, setChainsByType] = useState<Record<string, ChainRow[]>>({});
+  const [chainsByType, setChainsByType] = useState<Record<string, ChainRow[]>>(
+    {},
+  );
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -52,28 +63,28 @@ export default function NewRequest() {
           api.approvalChains.list() as Promise<any[]>,
         ]);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      setTypes(
-        rawTypes.map((t) => ({
-          ...t,
-          fields: Array.isArray(t.fields) ? t.fields : [],
-        })),
-      );
+        setTypes(
+          rawTypes.map((t) => ({
+            ...t,
+            fields: Array.isArray(t.fields) ? t.fields : [],
+          })),
+        );
 
-      const map: Record<string, ChainRow[]> = {};
-      for (const c of chains as any[]) {
-        const tid = c.approval_type_id;
-        if (!tid) continue;
-        if (!map[tid]) map[tid] = [];
-        map[tid].push({
-          id: c.id,
-          name: c.name,
-          approval_type_id: c.approval_type_id,
-          steps: Array.isArray(c.steps) ? c.steps : [],
-        });
-      }
-      setChainsByType(map);
+        const map: Record<string, ChainRow[]> = {};
+        for (const c of chains as any[]) {
+          const tid = c.approval_type_id;
+          if (!tid) continue;
+          if (!map[tid]) map[tid] = [];
+          map[tid].push({
+            id: c.id,
+            name: c.name,
+            approval_type_id: c.approval_type_id,
+            steps: Array.isArray(c.steps) ? c.steps : [],
+          });
+        }
+        setChainsByType(map);
       } catch {
         if (!cancelled) {
           setTypes([]);
@@ -91,12 +102,13 @@ export default function NewRequest() {
   }, []);
 
   const approvalType = types.find((t) => t.id === selectedType);
-  const chainList = selectedType ? chainsByType[selectedType] ?? [] : [];
+  const chainList = selectedType ? (chainsByType[selectedType] ?? []) : [];
   const chain = chainList[0];
 
   // Separate repeatable fields (line items) from regular form fields
   const regularFields = approvalType?.fields.filter((f) => !f.repeatable) ?? [];
-  const repeatableFields = approvalType?.fields.filter((f) => f.repeatable) ?? [];
+  const repeatableFields =
+    approvalType?.fields.filter((f) => f.repeatable) ?? [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,10 +119,14 @@ export default function NewRequest() {
 
     // Validate required regular fields
     const missingRegularFields = regularFields.filter(
-      (field) => field.required && (!formValues[field.name] || formValues[field.name].trim() === ""),
+      (field) =>
+        field.required &&
+        (!formValues[field.name] || formValues[field.name].trim() === ""),
     );
     if (missingRegularFields.length > 0) {
-      toast.error(`Please fill in required fields: ${missingRegularFields.map((f) => f.label).join(", ")}`);
+      toast.error(
+        `Please fill in required fields: ${missingRegularFields.map((f) => f.label).join(", ")}`,
+      );
       return;
     }
 
@@ -118,7 +134,9 @@ export default function NewRequest() {
     if (repeatableFields.some((f) => f.required)) {
       for (const item of items) {
         const missingItemFields = repeatableFields.filter(
-          (field) => field.required && (!item[field.name] || String(item[field.name]).trim() === ""),
+          (field) =>
+            field.required &&
+            (!item[field.name] || String(item[field.name]).trim() === ""),
         );
         if (missingItemFields.length > 0) {
           toast.error(
@@ -147,6 +165,8 @@ export default function NewRequest() {
         form_data: {
           ...formValues,
           items: items,
+          pre_comments: preComments,
+          post_comments: postComments,
           // content: editorContent, // Rich text editor content (commented out)
         } as Record<string, unknown>,
         current_step: 1,
@@ -166,20 +186,26 @@ export default function NewRequest() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[40vh]">
+      <div className="w-full p-6 flex items-center justify-center min-h-[40vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-6 space-y-6 w-full">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/approvals")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/approvals")}
+        >
           <ArrowLeft className="mr-1 h-4 w-4" /> Back
         </Button>
         <Separator orientation="vertical" className="h-6" />
-        <h1 className="text-xl font-bold text-foreground">New Approval Request</h1>
+        <h1 className="text-xl font-bold text-foreground">
+          New Approval Request
+        </h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -194,6 +220,8 @@ export default function NewRequest() {
                 setSelectedType(v);
                 setFormValues({});
                 setItems([]);
+                setPreComments("");
+                setPostComments("");
                 // setEditorContent("");
               }}
             >
@@ -208,7 +236,11 @@ export default function NewRequest() {
                 ))}
               </SelectContent>
             </Select>
-            {types.length === 0 && <p className="text-sm text-muted-foreground mt-2">No approval types configured yet.</p>}
+            {types.length === 0 && (
+              <p className="text-sm text-muted-foreground mt-2">
+                No approval types configured yet.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -221,28 +253,55 @@ export default function NewRequest() {
               <CardContent className="space-y-6">
                 {approvalType.description && (
                   <div className="bg-muted/50 border rounded-md p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Instructions</p>
-                    <p className="text-sm text-foreground">{approvalType.description}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                      Instructions
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {approvalType.description}
+                    </p>
                   </div>
                 )}
 
                 {/* Form Fields */}
                 {regularFields.length > 0 && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Request Information</h3>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Request Information
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {regularFields.map((field) => (
                         <div key={field.name}>
                           <FormFieldInput
                             field={field}
                             value={formValues[field.name] ?? ""}
-                            onChange={(value) => setFormValues((prev) => ({ ...prev, [field.name]: value }))}
+                            onChange={(value) =>
+                              setFormValues((prev) => ({
+                                ...prev,
+                                [field.name]: value,
+                              }))
+                            }
                           />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                {/* Pre-Comments (Optional Salutation) */}
+                <div className="space-y-2 border-t pt-4">
+                  <label className="block text-sm font-medium text-foreground">
+                    Pre-Salutation (Optional)
+                  </label>
+                  <Textarea
+                    value={preComments}
+                    onChange={(e) => setPreComments(e.target.value)}
+                    placeholder="e.g., Dear Mr. Manager, I hope you are doing well. Please find below the details of my request..."
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Add a greeting or salutation before the form data
+                  </p>
+                </div>
 
                 {/* Rich Text Editor - Commented Out */}
                 {/* 
@@ -259,44 +318,89 @@ export default function NewRequest() {
             </Card>
 
             {/* Line Items Manager */}
-            <LineItemsManager 
-              items={items} 
+            <LineItemsManager
+              items={items}
               onItemsChange={setItems}
               repeatableFields={repeatableFields}
             />
 
+            {/* Post-Comments (Closing Comments) */}
+            {(regularFields.length > 0 || repeatableFields.length > 0) && (
+              <Card className="border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Closing Remarks</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">
+                      Post-Comments (Optional)
+                    </label>
+                    <Textarea
+                      value={postComments}
+                      onChange={(e) => setPostComments(e.target.value)}
+                      placeholder="e.g., Thank you for your time and consideration. Please contact me if you need any additional information."
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional: Add any closing comments before your signature
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {chain ? (
               <Card className="border">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Approval Chain: {chain.name}</CardTitle>
+                  <CardTitle className="text-base">
+                    Approval Chain: {chain.name}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     {chain.steps.map((step) => (
-                      <div key={step.order} className="flex items-center gap-3 text-sm">
+                      <div
+                        key={step.order}
+                        className="flex items-center gap-3 text-sm"
+                      >
                         <div className="h-6 w-6 rounded bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
                           {step.order}
                         </div>
                         <div>
                           <span className="font-medium">{step.roleName}</span>
-                          <span className="text-muted-foreground ml-2">{step.action? "-" : step.action}</span>
+                          <span className="text-muted-foreground ml-2">
+                            {step.action ? "-" : step.action}
+                          </span>
                         </div>
                       </div>
                     ))}
-                    {chain.steps.length === 0 && <p className="text-sm text-muted-foreground">This chain has no steps yet.</p>}
+                    {chain.steps.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        This chain has no steps yet.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             ) : (
               selectedType && (
                 <p className="text-sm text-destructive">
-                  No approval chain is configured for this type. Ask an administrator to create one in Admin → Chains.
+                  No approval chain is configured for this type. Ask an
+                  administrator to create one in Admin → Chains.
                 </p>
               )
             )}
 
-            <Button type="submit" className="gap-2" disabled={submitting || !chain}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <Button
+              type="submit"
+              className="gap-2"
+              disabled={submitting || !chain}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
               Submit Request
             </Button>
           </>

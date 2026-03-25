@@ -496,6 +496,25 @@ apiRouter.patch(
       throw new HttpError(403, "Forbidden");
     }
 
+    // Prevent non-admin users from modifying their own role's permissions
+    if (!isAdmin && req.params.id === req.profile?.role_id) {
+      const currentRolePermissions = req.profile?.permissions || [];
+      const hasAdminConsoleAccess =
+        currentRolePermissions.includes("manage_users") ||
+        currentRolePermissions.includes("manage_roles") ||
+        currentRolePermissions.includes("manage_departments") ||
+        currentRolePermissions.includes("manage_approval_types") ||
+        currentRolePermissions.includes("manage_chains") ||
+        currentRolePermissions.includes("all");
+
+      if (hasAdminConsoleAccess) {
+        throw new HttpError(
+          403,
+          "You cannot modify permissions for your own role",
+        );
+      }
+    }
+
     const body = z
       .object({
         name: z.string().min(1).optional(),
@@ -591,14 +610,14 @@ apiRouter.get(
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
     // Check if user has admin access or manage_approval_types permission
-    const isAdmin = req.profile?.is_admin;
-    const hasPermission =
-      req.profile?.permissions?.includes("manage_approval_types") ||
-      req.profile?.permissions?.includes("all");
+    // const isAdmin = req.profile?.is_admin;
+    // const hasPermission =
+    //   req.profile?.permissions?.includes("manage_approval_types") ||
+    //   req.profile?.permissions?.includes("all");
 
-    if (!isAdmin && !hasPermission) {
-      throw new HttpError(403, "Forbidden");
-    }
+    // if (!isAdmin && !hasPermission) {
+    //   throw new HttpError(403, "Forbidden");
+    // }
 
     const { rows } = await pool.query(
       `SELECT * FROM approval_types ORDER BY name`,
@@ -759,14 +778,14 @@ apiRouter.get(
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
     // Check if user has admin access or manage_chains permission
-    const isAdmin = req.profile?.is_admin;
-    const hasPermission =
-      req.profile?.permissions?.includes("manage_chains") ||
-      req.profile?.permissions?.includes("all");
+    // const isAdmin = req.profile?.is_admin;
+    // const hasPermission =
+    //   req.profile?.permissions?.includes("manage_chains") ||
+    //   req.profile?.permissions?.includes("all");
 
-    if (!isAdmin && !hasPermission) {
-      throw new HttpError(403, "Forbidden");
-    }
+    // if (!isAdmin && !hasPermission) {
+    //   throw new HttpError(403, "Forbidden");
+    // }
 
     const { rows } = await pool.query(
       `SELECT * FROM approval_chains ORDER BY name`,
@@ -1112,6 +1131,35 @@ apiRouter.patch(
     }
 
     const body = updateUserBody.parse(req.body);
+
+    // Prevent non-admin users from changing role and permissions for users with admin console access
+    if (
+      !isAdmin &&
+      (body.role_id !== undefined || body.is_admin !== undefined)
+    ) {
+      // Get the target user's current permissions
+      const { rows: targetUserRows } = await pool.query<{
+        permissions: string[];
+      }>(`SELECT permissions FROM profiles WHERE id = $1`, [req.params.userId]);
+
+      if (targetUserRows.length > 0) {
+        const targetUserPermissions = targetUserRows[0].permissions || [];
+        const hasAdminConsoleAccess =
+          targetUserPermissions.includes("manage_users") ||
+          targetUserPermissions.includes("manage_roles") ||
+          targetUserPermissions.includes("manage_departments") ||
+          targetUserPermissions.includes("manage_approval_types") ||
+          targetUserPermissions.includes("manage_chains") ||
+          targetUserPermissions.includes("all");
+
+        if (hasAdminConsoleAccess) {
+          throw new HttpError(
+            403,
+            "Only admins can change permissions for users with admin console access",
+          );
+        }
+      }
+    }
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
