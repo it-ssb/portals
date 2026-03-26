@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { FormFieldInput } from "@/components/FormFieldInput";
 import { LineItemsManager, type LineItem } from "@/components/LineItemsManager";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -39,6 +40,7 @@ type ChainRow = {
 export default function NewRequest() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const { settings } = useCompany();
   const [selectedType, setSelectedType] = useState<string>("");
   // const [editorContent, setEditorContent] = useState<string>("");
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -109,6 +111,8 @@ export default function NewRequest() {
   const regularFields = approvalType?.fields.filter((f) => !f.repeatable) ?? [];
   const repeatableFields =
     approvalType?.fields.filter((f) => f.repeatable) ?? [];
+
+  const companyName = settings?.company_name || "COMPANY NAME";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,6 +359,216 @@ export default function NewRequest() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Letter Preview (live, before submission) */}
+            {approvalType && (
+              (() => {
+                const pageLayout =
+                  approvalType.page_layout === "landscape"
+                    ? "landscape"
+                    : "portrait";
+                const pageWidth = pageLayout === "portrait" ? "8.5in" : "11in";
+                const pageHeight =
+                  pageLayout === "portrait" ? "11in" : "8.5in";
+
+                const letterContent = (
+                  <div
+                    className="relative w-full"
+                    style={{
+                      fontFamily: "Arial, sans-serif",
+                      fontSize: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: "100%",
+                      height: "100%",
+                      width: "100%",
+                      padding: "0.825in",
+                      boxSizing: "border-box",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {/* Watermark */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] rotate-[-35deg]">
+                      <span
+                        className="font-bold tracking-widest whitespace-nowrap select-none"
+                        style={{ fontFamily: "Arial, sans-serif", fontSize: "6rem" }}
+                      >
+                        {user?.email}
+                      </span>
+                    </div>
+
+                    <div className="relative z-10 flex-1 flex flex-col">
+                      <div className="text-center border-b-2 border-foreground pb-3">
+                        {settings?.logo_url && (
+                          <img
+                            src={settings.logo_url}
+                            alt="Logo"
+                            className="h-20 mx-auto mb-1 object-contain"
+                          />
+                        )}
+                        <h2
+                          className="font-bold tracking-wide"
+                          style={{
+                            fontFamily: "Arial, sans-serif",
+                            fontSize: "20px",
+                          }}
+                        >
+                          {companyName.toUpperCase()}
+                        </h2>
+                        <p>{approvalType.name ?? "—"}</p>
+                      </div>
+
+                      <div
+                        className="flex justify-between mt-4"
+                        style={{ fontSize: "14px" }}
+                      >
+                        <div>
+                          <p>
+                            <strong>Request ID:</strong> DRAFT
+                          </p>
+                          <p>
+                            <strong>Status:</strong> DRAFT
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p>
+                            <strong>Date:</strong>{" "}
+                            {new Date().toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 space-y-3">
+                        {preComments ? (
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontFamily: "Arial, sans-serif",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: preComments }}
+                          />
+                        ) : null}
+
+                        <div className="pl-3 border-l-2 border-muted space-y-1">
+                          {regularFields.map((field) => {
+                            const raw = formValues[field.name] ?? "";
+                            const display =
+                              field.type === "checkbox"
+                                ? raw === "true"
+                                  ? "Yes"
+                                  : "—"
+                                : String(raw ?? "").trim() || "—";
+
+                            return (
+                              <p key={field.name} style={{ fontSize: "14px" }}>
+                                <strong>{field.label}:</strong> {display}
+                              </p>
+                            );
+                          })}
+                        </div>
+
+                        {items.length > 0 && repeatableFields.length > 0 && (
+                          <div className="my-4">
+                            <table
+                              className="w-full border-collapse"
+                              style={{ fontSize: "14px" }}
+                            >
+                              <thead>
+                                <tr>
+                                  {repeatableFields.map((field) => (
+                                    <th
+                                      key={field.name}
+                                      className={`border border-foreground p-2 font-semibold bg-muted ${
+                                        field.type === "number" ? "text-right" : "text-left"
+                                      }`}
+                                    >
+                                      {field.label}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map((item) => (
+                                  <tr key={item.id}>
+                                    {repeatableFields.map((field) => {
+                                      const val = (item as Record<string, unknown>)[
+                                        field.name
+                                      ];
+                                      return (
+                                        <td
+                                          key={`${item.id}-${field.name}`}
+                                          className={`border border-foreground p-2 ${
+                                            field.type === "number"
+                                              ? "text-right"
+                                              : "text-left"
+                                          }`}
+                                        >
+                                          {val ?? "—"}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {postComments ? (
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontFamily: "Arial, sans-serif",
+                              marginTop: "1rem",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: postComments }}
+                          />
+                        ) : null}
+                      </div>
+
+                      <div className="mt-6">
+                        <p
+                          className="font-bold mt-6"
+                          style={{ fontSize: "14px" }}
+                        >
+                          {profile?.full_name ?? ""}
+                        </p>
+                        <p
+                          className="text-muted-foreground"
+                          style={{ fontSize: "13px" }}
+                        >
+                          {companyName ?? ""}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+
+                return (
+                  <Card className="border">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Letter Preview</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="bg-card border rounded shadow-sm"
+                        style={{
+                          width: pageWidth,
+                          height: pageHeight,
+                          overflow: "hidden",
+                          boxSizing: "border-box",
+                          display: "flex",
+                          flexDirection: "column",
+                          margin: "0 auto",
+                        }}
+                      >
+                        {letterContent}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })()
             )}
 
             {chain ? (

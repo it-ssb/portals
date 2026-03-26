@@ -120,30 +120,12 @@
 
   #print-letter {
     display: block !important;
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
     border: none !important;
     box-shadow: none !important;
-    margin: 0 !important;
     padding: 0 !important;
   }
 
-  #print-letter > div {
-    padding: 40px !important;
-    margin: 0 !important;
-  }
-
-  #print-letter.print-landscape > div {
-    width: 11in !important;
-    height: 8.5in !important;
-  }
-
-  #print-letter.print-portrait > div {
-    width: 8.5in !important;
-    height: 11in !important;
-  }
+  /* Size/centering and @page are controlled by react-to-print pageStyle. */
 
   /* Ensure tables and content fill available width */
   #print-letter table {
@@ -160,10 +142,6 @@
     max-width: 100% !important;
   }
 
-  #print-letter div {
-    width: 100% !important;
-  }
-
   .no-print {
     display: none !important;
   }
@@ -171,11 +149,5 @@
   .print-only {
     display: block !important;
     visibility: visible !important;
-  }
-
-  /* Set page size based on orientation */
-  @page {
-    margin: 0.5in;
-    size: 8.5in 11in;
   }
 }

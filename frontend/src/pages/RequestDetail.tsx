@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useReactToPrint } from "react-to-print";
 import {
   ArrowLeft,
   Printer,
@@ -109,6 +110,8 @@ export default function RequestDetail() {
     Record<string, unknown>
   >({});
 
+  const printLetterRef = useRef<HTMLDivElement | null>(null);
+
   const companyName = settings?.company_name || "COMPANY NAME";
 
   useEffect(() => {
@@ -165,9 +168,52 @@ export default function RequestDetail() {
     };
   }, [id]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const pageLayout = request?.approval_types?.page_layout || "portrait";
+  const isLandscape = pageLayout !== "portrait";
+  // Standard US Letter size
+  const pageWidth = isLandscape ? "11in" : "8.5in";
+  const pageHeight = isLandscape ? "8.5in" : "11in";
+  const pageSize = isLandscape ? "11in 8.5in" : "8.5in 11in";
+
+  const handlePrint = useReactToPrint({
+    contentRef: printLetterRef,
+    documentTitle: request?.request_number
+      ? `Request_${request.request_number}`
+      : "Request_Letter",
+    pageStyle: `
+      @page { size: ${pageSize}; margin: 0in; }
+      html, body { margin: 0 !important; padding: 0 !important; }
+      body { display: flex; justify-content: center; align-items: flex-start; }
+      body * { visibility: hidden !important; }
+      #print-letter, #print-letter * { visibility: visible !important; }
+      #print-letter {
+        display: block !important;
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        transform: none !important;
+        width: ${pageWidth} !important;
+        height: ${pageHeight} !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+      }
+      #print-letter > div {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+      }
+      #print-letter table { width: 100% !important; table-layout: auto !important; }
+      #print-letter table td, #print-letter table th { word-break: break-word !important; }
+      @media print {
+        .no-print { display: none !important; }
+      }
+    `,
+  });
 
   const handleApprove = async () => {
     if (!request) return;
@@ -365,8 +411,8 @@ export default function RequestDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border no-print">
+        <div className="space-y-6 lg:contents">
+          <Card className="border no-print lg:col-span-2 lg:row-start-1">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Request Details</CardTitle>
             </CardHeader>
@@ -406,240 +452,257 @@ export default function RequestDetail() {
             </CardContent>
           </Card>
 
-          {/* Shared letter content used for both print and preview */}
-          {(() => {
-            const pageLayout =
-              request.approval_types?.page_layout || "portrait";
-            const pageWidth = pageLayout === "portrait" ? "8.5in" : "11in";
-            const pageHeight = pageLayout === "portrait" ? "11in" : "8.5in";
-            const pageOrientation =
-              pageLayout === "portrait" ? "portrait" : "landscape";
+          <div className="lg:col-span-3 lg:row-start-2">
+            {/* Shared letter content used for both print and preview */}
+            {(() => {
+              const pageLayout =
+                request.approval_types?.page_layout || "portrait";
+              // Standard US Letter size (inches)
+              const pageWidth =
+                pageLayout === "portrait" ? "8.5in" : "11in";
+              const pageHeight =
+                pageLayout === "portrait" ? "11in" : "8.5in";
+              const pageOrientation =
+                pageLayout === "portrait" ? "portrait" : "landscape";
 
-            const letterContent = (
-              <div
-                className="relative w-full"
-                style={{
-                  fontFamily: "Arial, sans-serif",
-                  fontSize: "16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  minHeight: "100%",
-                  width: "100%",
-                }}
-              >
-                {/* Watermark */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] rotate-[-35deg]">
-                  <span
-                    className="font-bold tracking-widest whitespace-nowrap select-none"
-                    style={{
-                      fontFamily: "Arial, sans-serif",
-                      fontSize: "6rem",
-                    }}
-                  >
-                    {user?.email}
-                  </span>
-                </div>
-                <div className="relative z-10 flex-1 flex flex-col">
-                  <div className="text-center border-b-2 border-foreground pb-3">
-                    {settings?.logo_url && (
-                      <img
-                        src={settings.logo_url}
-                        alt="Logo"
-                        className="h-20 mx-auto mb-1 object-contain"
-                      />
-                    )}
-                    <h2
-                      className="font-bold tracking-wide"
+              const letterContent = (
+                <div
+                  className="relative w-full"
+                  style={{
+                    fontFamily: "Arial, sans-serif",
+                    fontSize: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: "100%",
+                    height: "100%",
+                    width: "100%",
+                    padding: "0.825in",
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Watermark */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] rotate-[-35deg]">
+                    <span
+                      className="font-bold tracking-widest whitespace-nowrap select-none"
                       style={{
                         fontFamily: "Arial, sans-serif",
-                        fontSize: "20px",
+                        fontSize: "6rem",
                       }}
                     >
-                      {companyName.toUpperCase()}
-                    </h2>
-                    <p>{request.approval_types?.name ?? "—"}</p>
+                      {user?.email}
+                    </span>
                   </div>
-                  <div
-                    className="flex justify-between mt-4"
-                    style={{ fontSize: "14px" }}
-                  >
-                    <div>
-                      <p>
-                        <strong>Request ID:</strong> {displayId}
-                      </p>
-                      <p>
-                        <strong>Status:</strong>{" "}
-                        {request.status.replace("_", " ").toUpperCase()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p>
-                        <strong>Date:</strong>{" "}
-                        {new Date(request.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  {richContent ? (
-                    <div
-                      className="my-3 prose max-w-none [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-muted [&_th]:font-semibold"
-                      style={{
-                        fontFamily: "Arial, sans-serif",
-                        fontSize: "16px",
-                      }}
-                      dangerouslySetInnerHTML={{ __html: richContent }}
-                    />
-                  ) : (
-                    <div className="mt-6 space-y-3">
-                      {preComments && (
-                        <div
-                          style={{
-                            fontSize: "14px",
-                            fontFamily: "Arial, sans-serif",
-                          }}
-                          dangerouslySetInnerHTML={{ __html: preComments }}
+                  <div className="relative z-10 flex-1 flex flex-col">
+                    <div className="text-center border-b-2 border-foreground pb-3">
+                      {settings?.logo_url && (
+                        <img
+                          src={settings.logo_url}
+                          alt="Logo"
+                          className="h-20 mx-auto mb-1 object-contain"
                         />
                       )}
-                      <div className="pl-3 border-l-2 border-muted space-y-1">
-                        {formEntries.map(([key, value]) => {
-                          const field = fields.find((f) => f.name === key);
-                          return (
-                            <p key={key} style={{ fontSize: "14px" }}>
-                              <strong>{field?.label || key}:</strong>{" "}
-                              {String(value ?? "")}
-                            </p>
-                          );
-                        })}
+                      <h2
+                        className="font-bold tracking-wide"
+                        style={{
+                          fontFamily: "Arial, sans-serif",
+                          fontSize: "20px",
+                        }}
+                      >
+                        {companyName.toUpperCase()}
+                      </h2>
+                      <p>{request.approval_types?.name ?? "—"}</p>
+                    </div>
+                    <div
+                      className="flex justify-between mt-4"
+                      style={{ fontSize: "14px" }}
+                    >
+                      <div>
+                        <p>
+                          <strong>Request ID:</strong> {displayId}
+                        </p>
+                        <p>
+                          <strong>Status:</strong>{" "}
+                          {request.status.replace("_", " ").toUpperCase()}
+                        </p>
                       </div>
-                      {items.length > 0 && repeatableFields.length > 0 && (
-                        <div className="my-4">
-                          <table
-                            className="w-full border-collapse"
-                            style={{ fontSize: "14px" }}
-                          >
-                            <thead>
-                              <tr>
-                                {repeatableFields.map((field) => (
-                                  <th
-                                    key={field.name}
-                                    className={`border border-foreground p-2 font-semibold bg-muted ${field.type === "number" ? "text-right" : "text-left"}`}
-                                  >
-                                    {field.label}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {items.map((item: any, idx: number) => (
-                                <tr key={idx}>
+                      <div className="text-right">
+                        <p>
+                          <strong>Date:</strong>{" "}
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    {richContent ? (
+                      <div
+                        className="my-3 prose max-w-none [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-muted [&_th]:font-semibold"
+                        style={{
+                          fontFamily: "Arial, sans-serif",
+                          fontSize: "16px",
+                        }}
+                        dangerouslySetInnerHTML={{ __html: richContent }}
+                      />
+                    ) : (
+                      <div className="mt-6 space-y-3">
+                        {preComments && (
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontFamily: "Arial, sans-serif",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: preComments }}
+                          />
+                        )}
+                        <div className="pl-3 border-l-2 border-muted space-y-1">
+                          {formEntries.map(([key, value]) => {
+                            const field = fields.find((f) => f.name === key);
+                            return (
+                              <p key={key} style={{ fontSize: "14px" }}>
+                                <strong>{field?.label || key}:</strong>{" "}
+                                {String(value ?? "")}
+                              </p>
+                            );
+                          })}
+                        </div>
+                        {items.length > 0 && repeatableFields.length > 0 && (
+                          <div className="my-4">
+                            <table
+                              className="w-full border-collapse"
+                              style={{ fontSize: "14px" }}
+                            >
+                              <thead>
+                                <tr>
                                   {repeatableFields.map((field) => (
-                                    <td
-                                      key={`${idx}-${field.name}`}
-                                      className={`border border-foreground p-2 ${field.type === "number" ? "text-right" : "text-left"}`}
+                                    <th
+                                      key={field.name}
+                                      className={`border border-foreground p-2 font-semibold bg-muted ${field.type === "number" ? "text-right" : "text-left"}`}
                                     >
-                                      {item[field.name] ?? "—"}
-                                    </td>
+                                      {field.label}
+                                    </th>
                                   ))}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {items.map((item: any, idx: number) => (
+                                  <tr key={idx}>
+                                    {repeatableFields.map((field) => (
+                                      <td
+                                        key={`${idx}-${field.name}`}
+                                        className={`border border-foreground p-2 ${field.type === "number" ? "text-right" : "text-left"}`}
+                                      >
+                                        {item[field.name] ?? "—"}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {postComments && (
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontFamily: "Arial, sans-serif",
+                              marginTop: "1rem",
+                            }}
+                            dangerouslySetInnerHTML={{ __html: postComments }}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-6">
+                      <p
+                        className="font-bold mt-6"
+                        style={{ fontSize: "14px" }}
+                      >
+                        {initiatorName}
+                      </p>
+                      {initiatorRole && (
+                        <p
+                          className="text-muted-foreground"
+                          style={{ fontSize: "13px" }}
+                        >
+                          {initiatorRole}
+                        </p>
                       )}
-                      {postComments && (
-                        <div
-                          style={{
-                            fontSize: "14px",
-                            fontFamily: "Arial, sans-serif",
-                            marginTop: "1rem",
-                          }}
-                          dangerouslySetInnerHTML={{ __html: postComments }}
-                        />
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-6">
-                    <p className="font-bold mt-6" style={{ fontSize: "14px" }}>
-                      {initiatorName}
-                    </p>
-                    {initiatorRole && (
                       <p
                         className="text-muted-foreground"
                         style={{ fontSize: "13px" }}
                       >
-                        {initiatorRole}
+                        {request.departments?.name ?? ""}
                       </p>
-                    )}
-                    <p
-                      className="text-muted-foreground"
-                      style={{ fontSize: "13px" }}
-                    >
-                      {request.departments?.name ?? ""}
-                    </p>
-                    <p
-                      className="text-muted-foreground"
-                      style={{ fontSize: "13px" }}
-                    >
-                      {companyName ?? ""}
-                    </p>
+                      <p
+                        className="text-muted-foreground"
+                        style={{ fontSize: "13px" }}
+                      >
+                        {companyName ?? ""}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
+              );
 
-            return (
-              <>
-                {/* Print version (hidden on screen) */}
-                <Card
-                  className={`border-0 shadow-none print-only ${
-                    pageOrientation === "landscape"
-                      ? "print-landscape"
-                      : "print-portrait"
-                  }`}
-                  id="print-letter"
-                  style={{
-                    display: "none",
-                  }}
-                >
-                  <CardContent
-                    className="p-8"
+              return (
+                <>
+                  {/* Print version (hidden on screen) */}
+                  <Card
+                    className={`border-0 shadow-none print-only ${
+                      pageOrientation === "landscape"
+                        ? "print-landscape"
+                        : "print-portrait"
+                    }`}
+                    id="print-letter"
+                    ref={printLetterRef}
                     style={{
-                      width: pageWidth,
-                      height: pageHeight,
-                      margin: "0 auto",
-                      display: "flex",
-                      flexDirection: "column",
+                      display: "none",
                     }}
                   >
-                    {letterContent}
-                  </CardContent>
-                </Card>
-
-                {/* On-screen preview */}
-                <Card className="border no-print">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Letter Preview</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div
-                      className="bg-card border rounded mx-auto shadow-sm"
+                    <CardContent
+                      className="p-4"
                       style={{
                         width: pageWidth,
                         height: pageHeight,
-                        overflow: "auto",
+                        margin: "0 auto",
                         display: "flex",
                         flexDirection: "column",
                       }}
                     >
                       {letterContent}
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            );
-          })()}
+                    </CardContent>
+                  </Card>
+
+                  {/* On-screen preview */}
+                  <Card className="border no-print">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">
+                        Letter Preview
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="bg-card border rounded shadow-sm"
+                        style={{
+                          width: pageWidth,
+                          margin: "0 auto",
+                          height: pageHeight,
+                          overflow: "hidden",
+                          boxSizing: "border-box",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        {letterContent}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              );
+            })()}
+          </div>
         </div>
 
-        <div>
+        <div className="lg:col-start-3 lg:row-start-1 lg:col-span-1">
           <Card className="border sticky top-6 no-print">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Approval Timeline</CardTitle>

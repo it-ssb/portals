@@ -121,10 +121,33 @@ export function AdminApprovalTypes() {
 
   const handleSave = async () => {
     if (!name.trim()) return;
-    const cleanFields = fields.map((f) => ({
-      ...f,
-      name: f.label.toLowerCase().replace(/\s+/g, "_"),
-    }));
+    // Field values are stored by `name` in the form_data object.
+    // If multiple fields end up with the same/empty name (e.g. empty labels),
+    // typing in one field will appear in others. Ensure unique, non-empty names.
+    const usedNames = new Set<string>();
+    const cleanFields = fields.map((f, idx) => {
+      const rawLabel = (f.label ?? "").trim();
+      const baseFromLabel = rawLabel
+        ? rawLabel.toLowerCase().replace(/\s+/g, "_")
+        : f.name;
+
+      // Keep only safe chars; normalize underscores.
+      const sanitized = (baseFromLabel || `field_${idx}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+      const candidate = sanitized || f.name || `field_${idx}`;
+      let unique = candidate;
+      let suffix = 1;
+      while (usedNames.has(unique)) {
+        unique = `${candidate}_${suffix++}`;
+      }
+      usedNames.add(unique);
+
+      return { ...f, name: unique };
+    });
     try {
       if (editType) {
         await api.approvalTypes.update(editType.id, {
@@ -183,9 +206,8 @@ export function AdminApprovalTypes() {
               onValueChange={setActiveTab}
               className="w-full mt-4"
             >
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-1">
                 <TabsTrigger value="fields">Form Fields</TabsTrigger>
-                <TabsTrigger value="preview">Preview</TabsTrigger>
               </TabsList>
               <TabsContent value="fields" className="space-y-4 mt-4">
                 <div className="space-y-1.5">
@@ -331,9 +353,6 @@ export function AdminApprovalTypes() {
                     </p>
                   )}
                 </div>
-              </TabsContent>
-              <TabsContent value="preview" className="mt-4">
-                <FormPreview fields={fields} pageLayout={pageLayout} />
               </TabsContent>
             </Tabs>
             <Button onClick={handleSave} className="w-full">
