@@ -203,6 +203,16 @@ export const api = {
   },
 
   profiles: {
+    get: (id: string) =>
+      request<{
+        id: string;
+        full_name: string;
+        email: string;
+        department_id: string | null;
+        role_id: string | null;
+        department_name: string | null;
+        role_name: string | null;
+      }>(`/api/profiles/${id}`),
     list: () => request<Profile[]>("/api/profiles"),
     lookupNames: (ids: string[]) => {
       if (ids.length === 0)

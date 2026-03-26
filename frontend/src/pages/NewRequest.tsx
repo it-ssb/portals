@@ -245,7 +245,8 @@ export default function NewRequest() {
               <SelectContent>
                 {types.map((type) => (
                   <SelectItem key={type.id} value={type.id}>
-                    {type.name} - {type.description ?? ""}
+                    {type.name}{" "}
+                    {type.description ? ` - ${type.description}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

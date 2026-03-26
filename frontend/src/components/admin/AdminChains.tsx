@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, ArrowDown, GripVertical } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  ArrowDown,
+  GripVertical,
+  Copy,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -151,6 +158,20 @@ export function AdminChains() {
       fetchData();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  };
+
+  const handleDuplicate = async (chain: Chain) => {
+    try {
+      await api.approvalChains.create({
+        name: `${chain.name} (Copy)`,
+        approval_type_id: chain.approval_type_id,
+        steps: chain.steps.map((s) => ({ ...s })),
+      });
+      toast.success("Approval chain duplicated");
+      fetchData();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Duplicate failed");
     }
   };
 
@@ -312,14 +333,24 @@ export function AdminChains() {
                       variant="ghost"
                       size="sm"
                       onClick={() => openEdit(chain)}
+                      title="Edit"
                     >
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => handleDuplicate(chain)}
+                      title="Duplicate"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleDelete(chain.id)}
                       className="text-destructive hover:text-destructive"
+                      title="Delete"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>

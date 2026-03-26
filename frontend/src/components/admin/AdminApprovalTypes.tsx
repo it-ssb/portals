@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, GripVertical } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Copy } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -226,6 +226,21 @@ export function AdminApprovalTypes() {
       fetchTypes();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  };
+
+  const handleDuplicate = async (type: ApprovalType) => {
+    try {
+      await api.approvalTypes.create({
+        name: `${type.name} (Copy)`,
+        description: type.description,
+        fields: type.fields.map((f) => ({ ...f })),
+        page_layout: type.page_layout,
+      });
+      toast.success("Approval type duplicated");
+      fetchTypes();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Duplicate failed");
     }
   };
 
@@ -563,14 +578,24 @@ export function AdminApprovalTypes() {
                     variant="ghost"
                     size="sm"
                     onClick={() => openEdit(type)}
+                    title="Edit"
                   >
                     <Edit className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleDuplicate(type)}
+                    title="Duplicate"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(type.id)}
                     className="text-destructive hover:text-destructive"
+                    title="Delete"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

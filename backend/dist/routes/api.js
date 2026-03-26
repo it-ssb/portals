@@ -611,6 +611,21 @@ apiRouter.get("/profiles/lookup", requireAuth, asyncHandler(async (req, res) => 
     const { rows } = await pool.query(`SELECT id, full_name FROM profiles WHERE id = ANY($1::uuid[])`, [ids]);
     res.json(Object.fromEntries(rows.map((r) => [r.id, r.full_name])));
 }));
+// Get profile info with role (for any authenticated user)
+apiRouter.get("/profiles/:id", requireAuth, asyncHandler(async (req, res) => {
+    const idsParam = req.query.ids;
+    if (!idsParam || typeof idsParam !== "string") {
+        res.json({});
+        return;
+    }
+    const ids = idsParam.split(",").filter(Boolean);
+    if (ids.length === 0) {
+        res.json({});
+        return;
+    }
+    const { rows } = await pool.query(`SELECT id, full_name FROM profiles WHERE id = ANY($1::uuid[])`, [ids]);
+    res.json(Object.fromEntries(rows.map((r) => [r.id, r.full_name])));
+}));
 // Profiles (admin list)
 apiRouter.get("/profiles", requireAuth, asyncHandler(async (req, res) => {
     // Check if user has admin access or manage_users permission
@@ -1122,18 +1137,34 @@ apiRouter.patch("/approval-requests/:id", requireAuth, asyncHandler(async (req, 
     if (request.initiator_id !== userId) {
         throw new HttpError(403, "Only the request initiator can update the request");
     }
-    // Request must be in changes_requested state
-    if (request.status !== "changes_requested") {
-        throw new HttpError(400, "Request must be in changes_requested state to be updated");
+    // If request is not changes_requested, allow only when no approvals have happened yet.
+    const { rows: approvedActions } = await pool.query(`SELECT id FROM approval_actions WHERE request_id = $1 AND status = 'approved' LIMIT 1`, [requestId]);
+    const hasApprovedAction = approvedActions.length > 0;
+    if (request.status === "changes_requested") {
+        // Update form_data and set status back to in_progress
+        const { rows: updatedRequests } = await pool.query(`UPDATE approval_requests SET form_data = $1::jsonb, status = 'in_progress', updated_at = now() WHERE id = $2 RETURNING *`, [JSON.stringify(body.form_data), requestId]);
+        // Reset the changes_requested action back to pending
+        await pool.query(`UPDATE approval_actions SET status = 'pending' WHERE request_id = $1 AND status = 'changes_requested'`, [requestId]);
+        const { rows: updatedActions } = await pool.query(`SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`, [requestId]);
+        // Log audit event
+        await logAudit(userId, req.profile.full_name, "UPDATE", "Approval Request", `Updated request: ${updatedRequests[0].request_number}`);
+        res.json({ request: updatedRequests[0], actions: updatedActions });
+        return;
     }
-    // Update form_data and reset status to in_progress
-    const { rows: updatedRequests } = await pool.query(`UPDATE approval_requests SET form_data = $1::jsonb, status = 'in_progress', updated_at = now() WHERE id = $2 RETURNING *`, [JSON.stringify(body.form_data), requestId]);
-    // Reset the changes_requested action back to pending
-    await pool.query(`UPDATE approval_actions SET status = 'pending' WHERE request_id = $1 AND status = 'changes_requested'`, [requestId]);
+    if (hasApprovedAction) {
+        throw new HttpError(400, "Cannot update request after approval has been provided");
+    }
+    if (request.status !== "pending" && request.status !== "in_progress") {
+        throw new HttpError(400, "Only requests in pending/in_progress/changes_requested can be updated");
+    }
+    // Update form_data; keep or set in_progress status for chain continuation
+    const targetStatus = request.status === "pending" ? "in_progress" : request.status;
+    const { rows: updatedRequests } = await pool.query(`UPDATE approval_requests SET form_data = $1::jsonb, status = $2, updated_at = now() WHERE id = $3 RETURNING *`, [JSON.stringify(body.form_data), targetStatus, requestId]);
     const { rows: updatedActions } = await pool.query(`SELECT * FROM approval_actions WHERE request_id = $1 ORDER BY step_order`, [requestId]);
     // Log audit event
     await logAudit(userId, req.profile.full_name, "UPDATE", "Approval Request", `Updated request: ${updatedRequests[0].request_number}`);
     res.json({ request: updatedRequests[0], actions: updatedActions });
+    return;
 }));
 apiRouter.get("/audit-logs", requireAdmin, asyncHandler(async (_req, res) => {
     const { rows } = await pool.query(`SELECT * FROM audit_logs ORDER BY created_at DESC`);

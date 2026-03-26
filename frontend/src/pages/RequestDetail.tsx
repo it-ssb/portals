@@ -135,16 +135,9 @@ export default function RequestDetail() {
 
         // Fetch initiator's profile to get role
         try {
-          const profiles = await api.profiles.list();
-          const initiatorProfile = (profiles as any[]).find(
-            (p) => p.id === row.initiator_id,
-          );
-          if (initiatorProfile?.role_id) {
-            const roles = await api.roles.list();
-            const role = (roles as any[]).find(
-              (r) => r.id === initiatorProfile.role_id,
-            );
-            setInitiatorRole(role?.name ?? "");
+          const initiatorProfile = await api.profiles.get(row.initiator_id);
+          if (initiatorProfile?.role_name) {
+            setInitiatorRole(initiatorProfile.role_name);
           }
         } catch {
           setInitiatorRole("");
@@ -459,13 +452,13 @@ export default function RequestDetail() {
                   className="relative w-full"
                   style={{
                     fontFamily: "Arial, sans-serif",
-                    fontSize: "12px",
+                    fontSize: "16px",
                     display: "flex",
                     flexDirection: "column",
                     minHeight: "100%",
                     height: "100%",
                     width: "100%",
-                    padding: "0.825in",
+                    padding: "0.5in",
                     boxSizing: "border-box",
                     overflow: "hidden",
                   }}
@@ -527,7 +520,7 @@ export default function RequestDetail() {
                         className="my-3 prose max-w-none [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-muted [&_th]:font-semibold"
                         style={{
                           fontFamily: "Arial, sans-serif",
-                          fontSize: "12px",
+                          fontSize: "14px",
                         }}
                         dangerouslySetInnerHTML={{ __html: richContent }}
                       />
@@ -536,7 +529,7 @@ export default function RequestDetail() {
                         {preComments && (
                           <div
                             style={{
-                              fontSize: "12px",
+                              fontSize: "14px",
                               fontFamily: "Arial, sans-serif",
                             }}
                             dangerouslySetInnerHTML={{ __html: preComments }}
@@ -584,7 +577,7 @@ export default function RequestDetail() {
                                           {groupFields.map((field) => (
                                             <th
                                               key={field.name}
-                                              className="border border-foreground p-2 bg-muted font-semibold"
+                                              className="border border-foreground p-2 bg-muted font-semibold text-center"
                                             >
                                               {field.label || field.name}
                                             </th>
@@ -608,7 +601,7 @@ export default function RequestDetail() {
                                             return (
                                               <td
                                                 key={`${group}-${field.name}-value`}
-                                                className="border border-foreground p-2"
+                                                className="border border-foreground p-2 text-center"
                                               >
                                                 {displayValue}
                                               </td>
@@ -670,11 +663,7 @@ export default function RequestDetail() {
                                             {groupFields.map((field) => (
                                               <th
                                                 key={field.name}
-                                                className={`border border-foreground p-2 font-semibold bg-muted ${
-                                                  field.type === "number"
-                                                    ? "text-right"
-                                                    : "text-left"
-                                                }`}
+                                                className="border border-foreground p-2 font-semibold bg-muted text-center"
                                               >
                                                 {field.label}
                                               </th>
@@ -688,11 +677,7 @@ export default function RequestDetail() {
                                                 {groupFields.map((field) => (
                                                   <td
                                                     key={`${idx}-${field.name}`}
-                                                    className={`border border-foreground p-2 ${
-                                                      field.type === "number"
-                                                        ? "text-right"
-                                                        : "text-left"
-                                                    }`}
+                                                    className="border border-foreground p-2 text-center"
                                                   >
                                                     {item[field.name] ?? "—"}
                                                   </td>
