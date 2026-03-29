@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS profiles (
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   is_admin BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+  is_locked BOOLEAN NOT NULL DEFAULT false,
+  locked_at TIMESTAMPTZ,
+  last_failed_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
